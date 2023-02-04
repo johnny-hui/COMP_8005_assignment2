@@ -1,0 +1,22 @@
+Q: How to change hashing algorithm from Yescrypt (default) to something else?
+        - Open Terminal
+        - sudo nano -w /etc/pam.d/passwd
+        - enter the following:
+            - password   required   pam_unix.so sha512 shadow nullok rounds=65536
+
+        - If you want to implement another hashing algorithm, simply replace the sha512
+
+Q: How do I check if the correct hashing algorithm has been made?
+        - Open Terminal
+        - Try "sudo useradd [any_name]"
+        - Enter "sudo passwd [any_name]"
+        - Open the file: cat /etc/shadow and check for the "$id$" prefix of the hashing algorithm.
+
+Q: How do I run the program (Example)?
+    - a) Running with max attempts
+        sudo python main.py -f [DIR_OF /etc/shadow] -l [DIR_OF_PASSWORD_TEXT] -a [NUM_OF_ATTEMPTS] user1 user2 user3
+
+    - b) Without any number of attempts specified
+        sudo python main.py -f [DIR_OF /etc/shadow] -l [DIR_OF_PASSWORD_TEXT] user1 user2 user3
+
+
