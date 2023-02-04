@@ -1,35 +1,26 @@
 import Algorithms
+import cpuinfo
+from constants import WELCOME_MSG, WELCOME_DECORATION, DICTIONARY_ATK_MSG, ZERO, TWO, BACK_TO_START, BRUTE_FORCE_LAUNCH, \
+    PROGRAM_TERMINATE_MSG_1, PROGRAM_TERMINATE_MSG_2
 from Cracker import brute_force
 import crypt
 import getopt
+import multiprocessing
 import os
 import sys
 import time
 
-WELCOME_MSG = "A basic single-threaded password cracker program (v1.0) \nBy Johnny Hui (A00973103)"
-WELCOME_DECORATION = "=============================================================================================" \
-                     "=============="
-DICTIONARY_ATK_MSG = "[+] [ATTACK 1]: Now beginning the cracking " \
-                     "process with a Dictionary Attack..."
-ZERO = 0
-TWO = 2
-BACK_TO_START = 0
-BRUTE_FORCE_LAUNCH = True
-PROGRAM_TERMINATE_MSG_1 = "[+] All users have been processed!"
-PROGRAM_TERMINATE_MSG_2 = "[+] PROGRAM_EXIT: Now terminating program..."
-
-
-def algorithm_not_found():
+def _algorithm_not_found():
     print("[+] ALGORITHM_NOT_FOUND_ERROR: This algorithm type is not supported!")
     print("[+] Now checking for next user...")
 
 
-def check_args(opts):
+def _check_args(opts):
     if len(opts) == ZERO:
         sys.exit("[+] NO_ARG_ERROR: No arguments were passed in!")
 
 
-def check_if_file_exists(file_dir):
+def _check_if_file_exists(file_dir):
     try:
         if not os.path.exists(file_dir):
             sys.exit("[+] ERROR: File Doesn't Exist or Invalid Argument!")
@@ -45,12 +36,12 @@ def check_if_root_user():
                  "[Please run this script again using sudo command].")
 
 
-def check_user_parameters(user_list):
+def _check_user_parameters(user_list):
     if len(user_list) == ZERO:
         sys.exit("[+] No users were passed in as arguments!")
 
 
-def check_valid_user(file_entry, user_name, user_list):
+def _check_valid_user(file_entry, user_name, user_list):
     if '$' not in file_entry and len(user_list) >= TWO:
         print(f"[+] INVALID USER: {user_name} is a service, utility, or process and cannot be cracked!")
         print("[+] Now moving on to the next user...")
@@ -84,7 +75,7 @@ def dictionary_attack(file_directory, input_hash, input_salt, max_attempt):
             print(f"[+] Number of Attempts Made: {attempt}")
             total_attempts += attempt
         except IOError:
-            ioerror_handler(file_directory)
+            _ioerror_handler(file_directory)
             return BRUTE_FORCE_LAUNCH
     else:
         try:
@@ -106,11 +97,11 @@ def dictionary_attack(file_directory, input_hash, input_salt, max_attempt):
             print(f"[+] Number of Attempts Made: {attempt}")
             total_attempts += attempt
         except IOError:
-            ioerror_handler(file_directory)
+            _ioerror_handler(file_directory)
             return BRUTE_FORCE_LAUNCH
 
 
-def ioerror_handler(file_directory):
+def _ioerror_handler(file_directory):
     if file_directory == "":
         print("[+] IOError: No password file has been specified in command args!")
     else:
@@ -120,6 +111,8 @@ def ioerror_handler(file_directory):
 def display_welcome_msg():
     print(WELCOME_MSG)
     print(WELCOME_DECORATION)
+    print(f"[+] CPU Info: {cpuinfo.get_cpu_info()['brand_raw']}")
+    print(f"[+] Number of Cores Available: {multiprocessing.cpu_count()}")
 
 
 def init_variables():
@@ -131,7 +124,8 @@ def init_variables():
     stop_time = ZERO
     total_time = ZERO
 
-    return total_attempts, brute_force_attempts, total_brute_force_attempts, start_time, stop_time, total_time, password
+    return total_attempts, brute_force_attempts, total_brute_force_attempts, start_time, stop_time, total_time, \
+        password
 
 
 def open_shadow_file(file_dir):
@@ -149,29 +143,32 @@ def parse_arguments():
     cleansed_user_list_args = []
     file_directory = ""
     password_list = ""
+    num_of_threads = multiprocessing.cpu_count()
     max_attempts = ZERO
 
     # Remove file name from argument list
     arguments = sys.argv[1:]
 
     # Getting the file directory from (-f flag) and users (as args)
-    opts, user_list_args = getopt.getopt(arguments, 'f:l:a:')
+    opts, user_list_args = getopt.getopt(arguments, 'f:l:a:t:')
 
     # Check if empty parameters
-    check_args(opts)
+    _check_args(opts)
 
     # Check if users are passed in
-    check_user_parameters(user_list_args)
+    _check_user_parameters(user_list_args)
 
-    # Check for duplicate users in arguments (prevent cracking duplicate users)
-    remove_duplicate_users(cleansed_user_list_args, user_list_args)
-
-    # Get file directory
+    # Parsing command-line args
     for opt, argument in opts:
         if opt == '-f':
             file_directory = argument
         if opt == '-l':
             password_list = argument
+        if opt == '-t':
+            try:
+                num_of_threads = int(argument)
+            except ValueError:
+                sys.exit(f"[+] Must be an integer for -t option!")
         if opt == '-a':
             try:
                 max_attempts = int(argument)
@@ -179,7 +176,16 @@ def parse_arguments():
             except ValueError:
                 sys.exit(f"[+] Invalid Argument for -a option!")
 
-    return file_directory, cleansed_user_list_args, password_list, max_attempts
+    # Check number of threads (if default)
+    if num_of_threads == multiprocessing.cpu_count():
+        print(f"[+] [DEFAULT] Program is now creating and using {num_of_threads} threads...")
+    else:
+        print(f"[+] [CUSTOM] Program is now creating and using {num_of_threads} threads...")
+
+    # Check for duplicate users in arguments (prevent cracking duplicate users)
+    _remove_duplicate_users(cleansed_user_list_args, user_list_args)
+
+    return file_directory, cleansed_user_list_args, password_list, max_attempts, num_of_threads
 
 
 def print_end():
@@ -190,22 +196,22 @@ def print_end():
     print(PROGRAM_TERMINATE_MSG_2)
 
 
+def _print_results(elapsed_time):
+    print(f"[+] Time elapsed: {elapsed_time} seconds")
+
+
 def process_statistics(pw):
     global stop_time, total_time
 
     stop_time = time.process_time()
-    print_results(round(stop_time - start_time, 2))
+    _print_results(round(stop_time - start_time, 2))
     total_time += (stop_time - start_time)
 
     if pw != "":
         print(f"[+] The password is {pw}")
 
 
-def print_results(elapsed_time):
-    print(f"[+] Time elapsed: {elapsed_time} seconds")
-
-
-def remove_duplicate_users(cleansed_user_list_args, orig_user_list_args):
+def _remove_duplicate_users(cleansed_user_list_args, orig_user_list_args):
     for user in orig_user_list_args:
         if user not in cleansed_user_list_args:
             cleansed_user_list_args.append(user)
@@ -230,14 +236,14 @@ def user_not_found_check(user_info, user_list, user_name, file_dir):
 # Main Program
 if __name__ == "__main__":
     # Declare Variables
-    total_attempts, brute_force_attempts, total_brute_force_attempts, start_time, stop_time, total_time, \
-        password = init_variables()
+    total_attempts, brute_force_attempts, total_brute_force_attempts, start_time, stop_time, \
+        total_time, password = init_variables()
 
     # Initialize Program
     display_welcome_msg()
     # check_if_root_user()
-    file_directory, user_list_args, password_list_dir, max_attempts = parse_arguments()
-    check_if_file_exists(file_directory)
+    file_directory, user_list_args, password_list_dir, max_attempts, num_of_threads = parse_arguments()
+    _check_if_file_exists(file_directory)
 
     # Read contents of the /etc/shadow
     shadow_file = open_shadow_file(file_directory)
@@ -255,13 +261,13 @@ if __name__ == "__main__":
                 selected_user_info = entry.split('$')
 
                 # Check if user is valid (and not a service/process/utility)
-                if check_valid_user(entry, user, user_list_args) is False:
+                if _check_valid_user(entry, user, user_list_args) is False:
                     break
 
                 # Determine the type of algorithm for user and extract salt
                 algorithm = Algorithms.Algorithm()
                 if algorithm.algorithm_checker(selected_user_info) == Algorithms.Algorithm.ERROR_CODE:
-                    algorithm_not_found()
+                    _algorithm_not_found()
                     break
 
                 print(DICTIONARY_ATK_MSG)
