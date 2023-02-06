@@ -1,6 +1,3 @@
-import crypt
-
-
 class Algorithm:
     YESCRYPT = 'y'
     SHA_256 = '5'
