@@ -454,7 +454,7 @@ if __name__ == "__main__":
 
     # Initialize Program
     display_welcome_msg()
-    # check_if_root_user()
+    check_if_root_user()
     file_directory, user_list_args, password_list_dir, max_attempts, num_of_threads = parse_arguments()
     _check_if_files_exists(file_directory, password_list_dir)
 
