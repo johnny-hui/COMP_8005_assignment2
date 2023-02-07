@@ -1,4 +1,4 @@
-WELCOME_MSG = "A basic single-threaded password cracker program (v1.0) \nBy Johnny Hui (A00973103)"
+WELCOME_MSG = "A basic multi-threaded password cracker program (v2.0) \nBy Johnny Hui (A00973103)"
 WELCOME_DECORATION = "=============================================================================================" \
                      "=============="
 DICTIONARY_ATK_MSG = "[+] [ATTACK 1]: Now beginning the cracking " \

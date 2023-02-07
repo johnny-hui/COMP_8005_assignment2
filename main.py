@@ -5,7 +5,7 @@ from collections import deque
 import cpuinfo
 from constants import WELCOME_MSG, WELCOME_DECORATION, DICTIONARY_ATK_MSG, ZERO, TWO, BACK_TO_START, BRUTE_FORCE_LAUNCH, \
     PROGRAM_TERMINATE_MSG_1, PROGRAM_TERMINATE_MSG_2
-from Cracker import brute_force
+from Cracker import brute_force_multithread, create_char_chunk_index_list, BRUTE_FORCE_ATK_MSG
 import crypt
 import getopt
 import multiprocessing
@@ -19,13 +19,26 @@ def _algorithm_not_found():
     print("[+] Now checking for next user...")
 
 
+def async_dictionary_attack():
+    _create_dictionary_thread_pool()
+
+
 def _calculate_dictionary_thread_time(s_time, thread_id, total_thread_time_lck):
-    global total_thread_time
+    global dictionary_total_thread_time
     total_time = (time.process_time() - s_time)
     total_thread_time_lck.acquire()
-    total_thread_time += total_time
+    dictionary_total_thread_time += total_time
     total_thread_time_lck.release()
     print(f"[+] [Thread {thread_id}] Time: {total_time} seconds")
+
+
+def _calculate_pw_dictionary_thread_time(s_time, thread_id, total_thread_time_lck):
+    global dictionary_total_thread_time
+    total_time = (time.process_time() - s_time)
+    total_thread_time_lck.acquire()
+    dictionary_total_thread_time += total_time
+    total_thread_time_lck.release()
+    print(f"[+] [PW Thread {thread_id}] Time: {total_time} seconds")
 
 
 def _check_args(opts):
@@ -38,7 +51,7 @@ def _check_if_files_exists(file_dir, pw_list_dir):
         if not os.path.exists(file_dir):
             sys.exit(f"[+] ERROR: {file_dir} Doesn't Exist or Invalid Argument!")
         elif not os.path.exists(pw_list_dir) or pw_list_dir == "":
-            print(f"[+] ERROR: {pw_list_dir} Doesn't Exist or Invalid Argument!")
+            print(f"[+] ERROR: Password File Doesn't Exist or Invalid Argument!")
         else:
             print(f"[+] Now reading the {file_dir} file...")
     except FileNotFoundError:
@@ -68,14 +81,10 @@ def _check_valid_user(file_entry, user_name, user_list):
         return True
 
 
-def create_dictionary_thread_pool():
+def _create_dictionary_thread_pool():
     with ThreadPoolExecutor() as executor:
         for i in range(num_of_threads):
             _execute_dictionary_threads(executor, i)
-
-
-def async_dictionary_attack():
-    create_dictionary_thread_pool()
 
 
 def dictionary_attack_helper(input_hash, input_salt, max_attempt, pw_deque: deque,
@@ -85,7 +94,7 @@ def dictionary_attack_helper(input_hash, input_salt, max_attempt, pw_deque: dequ
     s_time = time.process_time()
 
     # Initialize variables
-    global total_attempts, thread_total_attempts, total_thread_time, total_thread_time_lck
+    global total_attempts, dictionary_thread_total_attempts, dictionary_total_thread_time, total_thread_time_lck
     attempt = ZERO
     thread_id += 1
 
@@ -98,6 +107,9 @@ def dictionary_attack_helper(input_hash, input_salt, max_attempt, pw_deque: dequ
                 list_lock.release()
 
                 if crypt.crypt(pw, input_salt) == input_hash:
+                    # Calculate Time
+                    _calculate_pw_dictionary_thread_time(s_time, thread_id, total_thread_time_lck)
+
                     print(f"[+] [PW Thread {thread_id}] CRACK COMPLETE: Password has been found!")
                     print(f"[+] [PW Thread {thread_id}] Number of Attempts Made: {attempt}")
 
@@ -113,12 +125,9 @@ def dictionary_attack_helper(input_hash, input_salt, max_attempt, pw_deque: dequ
 
                     # Update total attempts global
                     attempt_lock.acquire()
-                    thread_total_attempts += attempt
+                    dictionary_thread_total_attempts += attempt
                     total_attempts += attempt
                     attempt_lock.release()
-
-                    # Calculate Time
-                    _calculate_dictionary_thread_time(s_time, thread_id, total_thread_time_lck)
 
                     return pw
                 else:
@@ -126,7 +135,7 @@ def dictionary_attack_helper(input_hash, input_salt, max_attempt, pw_deque: dequ
 
             # If no password is found in dictionary
             attempt_lock.acquire()
-            thread_total_attempts += attempt
+            dictionary_thread_total_attempts += attempt
             total_attempts += attempt
             attempt_lock.release()
 
@@ -143,6 +152,9 @@ def dictionary_attack_helper(input_hash, input_salt, max_attempt, pw_deque: dequ
                 list_lock.release()
 
                 if crypt.crypt(pw, input_salt) == input_hash:
+                    # Calculate Time
+                    _calculate_pw_dictionary_thread_time(s_time, thread_id, total_thread_time_lck)
+
                     print(f"[+] [PW Thread {thread_id}] CRACK COMPLETE: Password has been found!")
                     print(f"[+] [PW Thread {thread_id}] Number of Attempts Made: {attempt}")
 
@@ -158,23 +170,20 @@ def dictionary_attack_helper(input_hash, input_salt, max_attempt, pw_deque: dequ
 
                     # Update total attempts global
                     attempt_lock.acquire()
-                    thread_total_attempts += attempt
+                    dictionary_thread_total_attempts += attempt
                     total_attempts += attempt
                     attempt_lock.release()
-
-                    # Calculate Time
-                    _calculate_dictionary_thread_time(s_time, thread_id, total_thread_time_lck)
 
                     return pw
                 elif attempt == max_attempt:
+                    _calculate_dictionary_thread_time(s_time, thread_id, total_thread_time_lck)
+
                     print(f"[+] [Thread {thread_id}] CRACK FAILED: Max attempts of {attempt} has been reached!")
 
                     attempt_lock.acquire()
-                    thread_total_attempts += attempt
+                    dictionary_thread_total_attempts += attempt
                     total_attempts += attempt
                     attempt_lock.release()
-
-                    _calculate_dictionary_thread_time(s_time, thread_id, total_thread_time_lck)
 
                     pw_stop_q.put(None)
                     return
@@ -183,7 +192,7 @@ def dictionary_attack_helper(input_hash, input_salt, max_attempt, pw_deque: dequ
 
             # If no password is found in dictionary
             attempt_lock.acquire()
-            thread_total_attempts += attempt
+            dictionary_thread_total_attempts += attempt
             total_attempts += attempt
             attempt_lock.release()
 
@@ -192,6 +201,22 @@ def dictionary_attack_helper(input_hash, input_salt, max_attempt, pw_deque: dequ
             if pw_stop_q.empty():
                 pw_stop_q.put(None)
                 return
+
+
+def dictionary_atk_results_check():
+    global password, num_of_threads
+
+    while pw_queue.qsize() != num_of_threads:
+        break
+
+    pw_queue_list = []
+
+    for m in range(pw_queue.qsize()):
+        pw_queue_list.append(pw_queue.get())
+
+    for item in pw_queue_list:
+        if item is not None:
+            password = item
 
 
 def _execute_dictionary_threads(executor, i):
@@ -220,27 +245,35 @@ def init_variables():
     thread_total_attempts = ZERO
     total_brute_force_attempts = ZERO
     total_attempts = ZERO
+    total_attempt_lock = threading.Lock()
     total_thread_time = ZERO
     total_thread_time_lck = threading.Lock()
+    brute_force_counter_lock = threading.Lock()
+    brute_force_counter = ZERO
     password = ""
     start_time = ZERO
     stop_time = ZERO
     total_time = ZERO
     pw_list_lock = threading.Lock()
-    total_attempt_lock = threading.Lock()
     pw_queue = queue.Queue()
     pw_lck = threading.Lock()
+    bf_pw_deque = deque()
+    bf_total_time_queue = queue.Queue()
+    bf_total_attempt_queue = queue.Queue()
+    bf_total_thread_time = ZERO
+    bf_total_thread_attempts = ZERO
 
     return total_attempts, brute_force_attempts, total_brute_force_attempts, thread_total_attempts, brute_force_flag, \
         start_time, stop_time, total_time, password, pw_list_lock, total_attempt_lock, pw_queue, pw_lck, \
-        total_thread_time, total_thread_time_lck
+        total_thread_time, total_thread_time_lck, brute_force_counter_lock, brute_force_counter, bf_pw_deque,\
+        bf_total_time_queue, bf_total_attempt_queue, bf_total_thread_time, bf_total_thread_attempts
 
 
 def make_pw_deque(pw_list_dir):
     global brute_force_flag
 
     if pw_list_dir == "":
-        return None
+        brute_force_flag = True
 
     pw_q = deque()
 
@@ -295,6 +328,9 @@ def parse_arguments():
             try:
                 if int(argument) < ZERO:
                     print("[+] ERROR: Number of threads (-t) cannot be negative integer!")
+                elif int(argument) > multiprocessing.cpu_count():
+                    print(f"[+] ERROR: Number of threads (-t) cannot be greater than the "
+                          f"max number of cores: {multiprocessing.cpu_count()}")
                 else:
                     num_of_threads = int(argument)
             except ValueError:
@@ -326,17 +362,19 @@ def print_end():
     print(PROGRAM_TERMINATE_MSG_2)
 
 
-def _print_results(elapsed_time, thread_attempts, thread_time):
-    print(f"[+] Total Thread Attempts: {thread_attempts}")
-    print(f"[+] Total Thread Time: {round(thread_time, 3)} seconds")
+def _print_results(elapsed_time, d_thread_attempts, d_thread_time):
+    if d_thread_attempts != ZERO and d_thread_time != ZERO:
+        print(f"[+] Total Thread Attempts (Dictionary Attack): {d_thread_attempts}")
+        print(f"[+] Total Thread Time: {round(d_thread_time, 3)} seconds")
+
     print(f"[+] Time elapsed: {elapsed_time} seconds")
 
 
 def process_statistics(pw):
-    global stop_time, total_time, thread_total_attempts, total_thread_time
+    global stop_time, total_time, dictionary_thread_total_attempts, dictionary_total_thread_time
 
     stop_time = time.process_time()
-    _print_results(round(stop_time - start_time, 2), thread_total_attempts, total_thread_time)
+    _print_results(round(stop_time - start_time, 2), dictionary_thread_total_attempts, dictionary_total_thread_time)
     total_time += (stop_time - start_time)
 
     if pw != "":
@@ -356,6 +394,25 @@ def remove_user_from_list(user_list):
     return user_list[1:]
 
 
+def reset_variables():
+    global start_time, password, dictionary_thread_total_attempts, \
+        dictionary_total_thread_time, brute_force_counter, pw_deque, \
+        bf_pw_deque, bf_total_time_queue, bf_total_attempt_queue, bf_total_thread_time
+
+    start_time = time.process_time()
+    password = None
+    shadow_file.seek(BACK_TO_START)
+    dictionary_thread_total_attempts = ZERO
+    dictionary_total_thread_time = ZERO
+    brute_force_counter = ZERO
+    bf_total_thread_time = ZERO
+    pw_deque = backup_deque.copy()
+    pw_queue.empty()
+    bf_pw_deque.clear()
+    bf_total_time_queue.empty()
+    bf_total_attempt_queue.empty()
+
+
 def user_not_found_check(user_info, user_list, user_name, file_dir):
     if len(user_info) is ZERO and len(user_list) >= TWO:
         print(f"\n[+] ERROR: {user_name} has not been found in {file_dir}! "
@@ -366,18 +423,22 @@ def user_not_found_check(user_info, user_list, user_name, file_dir):
         return True
 
 
-def dictionary_atk_signal_check():
-    global password
+def init_bf_variables():
+    start_index_list = create_char_chunk_index_list(num_of_threads)
+    bf_pw_lock = threading.Lock()
+    bf_total_time_lock = threading.Lock()
+    bf_total_attempt_lock = threading.Lock()
 
-    while pw_queue.empty():
-        pass
+    return start_index_list, bf_pw_lock, bf_total_time_lock, bf_total_attempt_lock
 
-    pw_queue_list = []
 
-    for i in range(pw_queue.qsize()):
-        pw_queue_list.append(pw_queue.get())
+def bf_pw_results_check():
+    global password, bf_pw_deque, num_of_threads
 
-    for item in pw_queue_list:
+    while len(bf_pw_deque) != num_of_threads:
+        break
+
+    for item in bf_pw_deque:
         if item is not None:
             password = item
 
@@ -385,9 +446,11 @@ def dictionary_atk_signal_check():
 # Main Program
 if __name__ == "__main__":
     # Declare Variables
-    total_attempts, brute_force_attempts, total_brute_force_attempts, thread_total_attempts, \
+    total_attempts, brute_force_attempts, total_brute_force_attempts, dictionary_thread_total_attempts, \
         brute_force_flag, start_time, stop_time, total_time, password, pw_list_lock, \
-        total_attempt_lock, pw_queue, pw_lck, total_thread_time, total_thread_time_lck = init_variables()
+        total_attempt_lock, pw_queue, pw_lck, dictionary_total_thread_time, total_thread_time_lck,\
+        brute_force_counter_lock, brute_force_counter, bf_pw_deque, bf_total_time_queue, \
+        bf_total_attempt_queue, bf_total_thread_time, bf_total_thread_attempts = init_variables()
 
     # Initialize Program
     display_welcome_msg()
@@ -404,16 +467,8 @@ if __name__ == "__main__":
 
     # Check if users exist and handle each
     for user in user_list_args:
-        start_time = time.process_time()
         selected_user_info = ""
-        password = None
-        shadow_file.seek(BACK_TO_START)
-        thread_total_attempts = ZERO
-        total_thread_time = ZERO
-
-        # Refresh the queues
-        pw_deque = backup_deque.copy()
-        pw_queue.empty()
+        reset_variables()
 
         for entry in shadow_file:
             if user == entry.split(':')[0]:
@@ -438,16 +493,46 @@ if __name__ == "__main__":
                 # Retrieve the salt
                 salt = algorithm.extract_salt(selected_user_info[1], entry)
 
-                # Dictionary Attack (multi-thread)
+                # a) ATTACK 1 - Dictionary Attack (multi-thread)
                 if not brute_force_flag:
                     async_dictionary_attack()
-                    dictionary_atk_signal_check()
+                    dictionary_atk_results_check()
 
-                # Use Brute-Force if dictionary fails or Password File is not valid
-                # INCLUDE thread_total_attempts + total_thread_time here
+                # b) ATTACK 2 - Use Brute-Force if dictionary fails or Password File is not valid
                 if (password is None) or (password is BRUTE_FORCE_LAUNCH):
-                    password, brute_force_attempts = brute_force(salt, user_hash, max_attempts)
-                    total_brute_force_attempts += brute_force_attempts
+                    print(BRUTE_FORCE_ATK_MSG)
+                    start_index_list, bf_pw_lock, bf_total_time_lock, bf_total_attempt_lock = init_bf_variables()
+
+                    with ThreadPoolExecutor() as executor:
+                        thread_id = 1
+                        for index in range(len(start_index_list)):
+                            executor.submit(brute_force_multithread, salt, user_hash, max_attempts, thread_id,
+                                            start_index_list[index], bf_pw_deque, bf_total_time_queue,
+                                            bf_total_attempt_queue, bf_pw_lock, bf_total_time_lock,
+                                            bf_total_attempt_lock)
+                            thread_id += 1
+
+                    # WHILE LOOP for password
+                    bf_pw_results_check()
+
+                    # WHILE LOOP (TIME) to wait for length of time queue to be equal to total number of threads
+                    while bf_total_time_queue.qsize() != num_of_threads:
+                        break
+
+                    for i in range(bf_total_time_queue.qsize()):
+                        bf_total_thread_time += bf_total_time_queue.get()
+
+                    print(f"[+] Total Thread Time (Brute Force): {bf_total_thread_time} seconds")
+
+                    # WHILE LOOP (ATTEMPTS) to wait for total number of attempts to be equal total num of threads
+                    while bf_total_attempt_queue.qsize() != num_of_threads:
+                        break
+
+                    for i in range(bf_total_attempt_queue.qsize()):
+                        bf_total_thread_attempts += bf_total_attempt_queue.get()
+
+                    total_brute_force_attempts += bf_total_thread_attempts
+                    print(f"[+] Total Number of Attempts For All Threads (Brute Force): {bf_total_thread_attempts}")
 
         if user_not_found_check(selected_user_info, user_list_args, user, file_directory):
             pass
