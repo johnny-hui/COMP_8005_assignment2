@@ -105,11 +105,11 @@ def brute_force_multithread(salt, user_hash, max_attempts, thread_id: int, index
                 print(f"[+] [Thread {thread_id}] CRACK FAILED: Max attempts of {max_attempts} has been reached!")
                 print(f"[+] [Thread {thread_id}] Time: {total_time} seconds")
 
+                password = None
+
                 _put_in_queue(attempts, bf_attempt_lock, bf_total_attempt_q)
                 _put_in_queue(total_time, bf_time_lock, bf_total_time_q)
                 _put_in_deque(password, bf_pw_lock, bf_pw_deque)
-
-                password = None
 
                 return password, attempts
 
