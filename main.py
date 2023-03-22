@@ -1,11 +1,14 @@
 import queue
+import signal
 from concurrent.futures import ThreadPoolExecutor
+from multiprocessing import Process
 import Algorithms
-from collections import deque
 import cpuinfo
+
+import constants
 from constants import WELCOME_MSG, WELCOME_DECORATION, DICTIONARY_ATK_MSG, ZERO, TWO, BACK_TO_START, BRUTE_FORCE_LAUNCH, \
     PROGRAM_TERMINATE_MSG_1, PROGRAM_TERMINATE_MSG_2
-from Cracker import brute_force_multithread, create_char_chunk_index_list, BRUTE_FORCE_ATK_MSG
+from Cracker import *
 import crypt
 import getopt
 import multiprocessing
@@ -13,6 +16,7 @@ import os
 import sys
 import time
 import threading
+
 
 def _algorithm_not_found():
     print("[+] ALGORITHM_NOT_FOUND_ERROR: This algorithm type is not supported!")
@@ -239,36 +243,6 @@ def display_welcome_msg():
     print(f"[+] Number of Cores Available: {multiprocessing.cpu_count()}")
 
 
-def init_variables():
-    brute_force_attempts = ZERO
-    brute_force_flag = False
-    thread_total_attempts = ZERO
-    total_brute_force_attempts = ZERO
-    total_attempts = ZERO
-    total_attempt_lock = threading.Lock()
-    total_thread_time = ZERO
-    total_thread_time_lck = threading.Lock()
-    brute_force_counter_lock = threading.Lock()
-    brute_force_counter = ZERO
-    password = ""
-    start_time = ZERO
-    stop_time = ZERO
-    total_time = ZERO
-    pw_list_lock = threading.Lock()
-    pw_queue = queue.Queue()
-    pw_lck = threading.Lock()
-    bf_pw_deque = deque()
-    bf_total_time_queue = queue.Queue()
-    bf_total_attempt_queue = queue.Queue()
-    bf_total_thread_time = ZERO
-    bf_total_thread_attempts = ZERO
-
-    return total_attempts, brute_force_attempts, total_brute_force_attempts, thread_total_attempts, brute_force_flag, \
-        start_time, stop_time, total_time, password, pw_list_lock, total_attempt_lock, pw_queue, pw_lck, \
-        total_thread_time, total_thread_time_lck, brute_force_counter_lock, brute_force_counter, bf_pw_deque,\
-        bf_total_time_queue, bf_total_attempt_queue, bf_total_thread_time, bf_total_thread_attempts
-
-
 def make_pw_deque(pw_list_dir):
     global brute_force_flag
 
@@ -367,18 +341,18 @@ def _print_results(elapsed_time, d_thread_attempts, d_thread_time):
         print(f"[+] Total Thread Attempts (Dictionary Attack): {d_thread_attempts}")
         print(f"[+] Total Thread Time: {round(d_thread_time, 3)} seconds")
 
-    print(f"[+] Time elapsed: {elapsed_time} seconds")
+    # print(f"[+] Time elapsed: {elapsed_time} seconds")
 
 
 def process_statistics(pw):
     global stop_time, total_time, dictionary_thread_total_attempts, dictionary_total_thread_time
 
-    stop_time = time.process_time()
-    _print_results(round(stop_time - start_time, 2), dictionary_thread_total_attempts, dictionary_total_thread_time)
+    stop_time = time.perf_counter()
     total_time += (stop_time - start_time)
+    _print_results(round(total_time, 2), dictionary_thread_total_attempts, dictionary_total_thread_time)
 
     if pw != "":
-        print(f"[+] The password is {pw}")
+        print(f"[+] The password is {constants.BOLD_START}{pw}{constants.BOLD_END}")
 
 
 def _remove_duplicate_users(cleansed_user_list_args, orig_user_list_args):
@@ -397,9 +371,10 @@ def remove_user_from_list(user_list):
 def reset_variables():
     global start_time, password, dictionary_thread_total_attempts, \
         dictionary_total_thread_time, brute_force_counter, pw_deque, \
-        bf_pw_deque, bf_total_time_queue, bf_total_attempt_queue, bf_total_thread_time
+        bf_pw_deque, bf_total_time_queue, bf_total_attempt_queue, bf_total_thread_time, \
+        processes
 
-    start_time = time.process_time()
+    start_time = time.perf_counter()
     password = None
     shadow_file.seek(BACK_TO_START)
     dictionary_thread_total_attempts = ZERO
@@ -408,9 +383,10 @@ def reset_variables():
     bf_total_thread_time = ZERO
     pw_deque = backup_deque.copy()
     pw_queue.empty()
-    bf_pw_deque.clear()
+    bf_pw_deque.empty()
     bf_total_time_queue.empty()
     bf_total_attempt_queue.empty()
+    processes.clear()
 
 
 def user_not_found_check(user_info, user_list, user_name, file_dir):
@@ -432,25 +408,47 @@ def init_bf_variables():
     return start_index_list, bf_pw_lock, bf_total_time_lock, bf_total_attempt_lock
 
 
-def bf_pw_results_check():
+def bf_pw_results_check(process_list: list[multiprocessing.Process]):
     global password, bf_pw_deque, num_of_threads
 
-    while len(bf_pw_deque) != num_of_threads:
+    while bf_pw_deque.qsize() != num_of_threads:
         break
 
-    for item in bf_pw_deque:
+    while True:  # CONSTRAINT: Since processes end so fast, wait 3 seconds before killing each process.
+        item = bf_pw_deque.get()
         if item is not None:
+            for process in process_list:
+                time.sleep(3)
+                os.kill(process.pid, signal.SIGKILL)
             password = item
+            break
 
 
 # Main Program
 if __name__ == "__main__":
     # Declare Variables
-    total_attempts, brute_force_attempts, total_brute_force_attempts, dictionary_thread_total_attempts, \
-        brute_force_flag, start_time, stop_time, total_time, password, pw_list_lock, \
-        total_attempt_lock, pw_queue, pw_lck, dictionary_total_thread_time, total_thread_time_lck,\
-        brute_force_counter_lock, brute_force_counter, bf_pw_deque, bf_total_time_queue, \
-        bf_total_attempt_queue, bf_total_thread_time, bf_total_thread_attempts = init_variables()
+    brute_force_attempts = ZERO
+    brute_force_flag = False
+    thread_total_attempts = ZERO
+    total_brute_force_attempts = ZERO
+    total_attempts = ZERO
+    total_attempt_lock = threading.Lock()
+    total_thread_time = ZERO
+    total_thread_time_lck = threading.Lock()
+    brute_force_counter_lock = threading.Lock()
+    brute_force_counter = ZERO
+    password = ""
+    start_time = ZERO  # Time (main) gets suspended when entering a process
+    stop_time = ZERO
+    total_time = ZERO
+    pw_list_lock = threading.Lock()
+    pw_queue = Queue()
+    pw_lck = threading.Lock()
+    bf_pw_deque = Queue()
+    bf_total_time_queue = Queue()
+    bf_total_attempt_queue = Queue()
+    bf_total_thread_time = ZERO
+    bf_total_thread_attempts = ZERO
 
     # Initialize Program
     display_welcome_msg()
@@ -464,6 +462,9 @@ if __name__ == "__main__":
 
     # Read contents of the /etc/shadow
     shadow_file = open_shadow_file(file_directory)
+
+    # Process Array
+    processes = []
 
     # Check if users exist and handle each
     for user in user_list_args:
@@ -503,21 +504,20 @@ if __name__ == "__main__":
                     print(BRUTE_FORCE_ATK_MSG)
                     start_index_list, bf_pw_lock, bf_total_time_lock, bf_total_attempt_lock = init_bf_variables()
 
-                    with ThreadPoolExecutor() as executor:
-                        thread_id = 1
-                        for index in range(len(start_index_list)):
-                            executor.submit(brute_force_multithread, salt, user_hash, max_attempts, thread_id,
-                                            start_index_list[index], bf_pw_deque, bf_total_time_queue,
-                                            bf_total_attempt_queue, bf_pw_lock, bf_total_time_lock,
-                                            bf_total_attempt_lock)
-                            thread_id += 1
+                    thread_id = 1
+                    for index in range(len(start_index_list)):
+                        proc = Process(target=brute_force_multithread, args=(salt, user_hash, max_attempts, thread_id,
+                                                                             start_index_list[index], bf_pw_deque,
+                                                                             bf_total_time_queue,
+                                                                             bf_total_attempt_queue, bf_pw_lock,
+                                                                             bf_total_time_lock,
+                                                                             bf_total_attempt_lock))
+                        thread_id += 1
+                        processes.append(proc)
+                        proc.start()
 
-                    # WHILE LOOP for password
-                    bf_pw_results_check()
-
-                    # WHILE LOOP (TIME) to wait for length of time queue to be equal to total number of threads
-                    while bf_total_time_queue.qsize() != num_of_threads:
-                        break
+                    # Wait until password has been found
+                    bf_pw_results_check(processes)
 
                     for i in range(bf_total_time_queue.qsize()):
                         bf_total_thread_time += bf_total_time_queue.get()

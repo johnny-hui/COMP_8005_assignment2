@@ -9,3 +9,6 @@ BACK_TO_START = 0
 BRUTE_FORCE_LAUNCH = True
 PROGRAM_TERMINATE_MSG_1 = "[+] All users have been processed!"
 PROGRAM_TERMINATE_MSG_2 = "[+] PROGRAM_EXIT: Now terminating program..."
+BOLD_START = "\033[1m"
+BOLD_END = "\033[0;0m"
+

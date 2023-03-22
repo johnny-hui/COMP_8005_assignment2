@@ -1,6 +1,7 @@
 import crypt
 import itertools
-import queue
+import multiprocessing
+from multiprocessing import Queue
 import time
 from collections import deque
 import numpy as np
@@ -25,7 +26,7 @@ def create_char_chunk_index_list(num_of_threads: int):
     chunk_list = np.array_split(characters_map, num_of_threads)
 
     for chunk in chunk_list:
-        for letter in characters_map:
+        for letter in characters_map[counter:]:
             if chunk[0] == letter:
                 chunk_index.append(counter)
                 break
@@ -58,9 +59,15 @@ def brute_force(salt, user_hash, max_attempts):
 
 # HYPOTHESIS: Heavily Compute-Bound Functions in Multi-threading will result in decrease performance
 # Threads operate in parallel; this - the CPU has to maintain the original workload for each thread.
-def brute_force_multithread(salt, user_hash, max_attempts, thread_id: int, index_start: int, bf_pw_deque: deque,
-                            bf_total_time_q: queue.Queue, bf_total_attempt_q: queue.Queue, bf_pw_lock: threading.Lock,
-                            bf_time_lock: threading.Lock, bf_attempt_lock: threading.Lock):
+def brute_force_multithread(salt, user_hash, max_attempts,
+                            thread_id: int,
+                            index_start: int,
+                            bf_pw_deque: multiprocessing.Queue,
+                            bf_total_time_q: multiprocessing.Queue,
+                            bf_total_attempt_q: multiprocessing.Queue,
+                            bf_pw_lock: threading.Lock,
+                            bf_time_lock: threading.Lock,
+                            bf_attempt_lock: threading.Lock):
     # Print to specify which starting index
     print(f"[+] [Thread {thread_id}] - Starting guess at the following character: {characters_map[index_start]}")
 
@@ -73,8 +80,9 @@ def brute_force_multithread(salt, user_hash, max_attempts, thread_id: int, index
             attempts += 1
 
             # SIGNAL - Check if password is found
-            if len(bf_pw_deque) is not ZERO:
-                for pw in bf_pw_deque:
+            if not bf_pw_deque.empty():
+                while True:
+                    pw = bf_pw_deque.get()
                     if pw is not None:
                         total_time = (time.process_time() - s_time)
                         _put_in_queue(attempts, bf_attempt_lock, bf_total_attempt_q)
@@ -123,9 +131,9 @@ def brute_force_multithread(salt, user_hash, max_attempts, thread_id: int, index
     _put_in_deque(password, bf_pw_lock, bf_pw_deque)
 
 
-def _put_in_deque(x, lock, some_deque: deque):
+def _put_in_deque(x, lock, some_deque: multiprocessing.Manager().Queue()):
     lock.acquire()
-    some_deque.append(x)
+    some_deque.put(x)
     lock.release()
 
 
