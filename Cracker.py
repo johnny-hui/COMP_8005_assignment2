@@ -35,30 +35,6 @@ def create_char_chunk_index_list(num_of_threads: int):
     return chunk_index
 
 
-def brute_force(salt, user_hash, max_attempts):
-    print(BRUTE_FORCE_ATK_MSG)
-    attempts = ZERO
-
-    for length in range(START_LENGTH, MAX_CHAR_LENGTH):
-        for guess in itertools.product(characters_map, repeat=length):
-            attempts += 1
-            password = ''.join(guess)
-
-            if crypt.crypt(password, salt) == user_hash:
-                print(f"[+] CRACK COMPLETE: Password has been found!")
-                print(f"[+] Number of Attempts Made: {attempts}")
-                return password, attempts
-
-            if attempts == max_attempts:
-                print(f"[+] CRACK FAILED: Max attempts of {max_attempts} has been reached!")
-                password = None
-                return password, attempts
-
-            # print(f"[+] Attempt {attempts}: {password}")
-
-
-# HYPOTHESIS: Heavily Compute-Bound Functions in Multi-threading will result in decrease performance
-# Threads operate in parallel; this - the CPU has to maintain the original workload for each thread.
 def brute_force_multithread(salt, user_hash, max_attempts,
                             thread_id: int,
                             index_start: int,
